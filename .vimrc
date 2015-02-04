@@ -34,4 +34,5 @@ au BufWrite /private/tmp/crontab.* set nowritebackup nobackup
 " Don't write backup file if vim is being called by "chpass"
 au BufWrite /private/etc/pw.* set nowritebackup nobackup
 
+" 插件:NERDTree"
 nnoremap <silent> <F11> :NERDTree<CR>
