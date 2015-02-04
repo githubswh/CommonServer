@@ -1,0 +1,61 @@
+package NJUPTDataServer.Mina;
+
+
+
+import org.apache.mina.core.buffer.IoBuffer;
+import org.apache.mina.core.session.IoSession;
+import org.apache.mina.filter.codec.CumulativeProtocolDecoder;
+import org.apache.mina.filter.codec.ProtocolDecoderOutput;
+
+import NJUPTDataServer.Utile.ConstVar;
+import NJUPTDataServer.Utile.NumberUtile;
+
+public class ServerDecode extends CumulativeProtocolDecoder {
+	// 主要处理粘包、断包及未按照要求进行头尾定义的数据
+	public ServerDecode() {
+		// TODO Auto-generated constructor stub
+	}
+
+	@Override
+	protected boolean doDecode(IoSession session, IoBuffer in,
+			ProtocolDecoderOutput out) throws Exception {
+
+		int Currentlength = in.remaining();// 当前数据的长度
+		if (Currentlength >= 26) {// 完整数据至少需要的长度，详见协议
+			in.mark();// 标记当前位置，以便reset		
+			int preID=NumberUtile.byteToInt(in.get(0));
+			//获取长度信息
+			String len_hex=NumberUtile.bytes2HexString(in.get(1))+NumberUtile.bytes2HexString(in.get(2));
+			int data_len=Integer.parseInt(len_hex, 16);
+			int afterID=NumberUtile.byteToInt(in.get(23));
+			int expectLen = data_len + 26;// 
+			// 如果消息内容的长度不够则直接返回true
+			if (expectLen > Currentlength) {// 如果消息内容不够，则重置，相当于不读取size
+				in.reset();
+				return false;// 接收新数据，以拼凑成完整数据
+			}
+
+			if (preID==ConstVar.PREID && afterID==ConstVar.AFTERID) {
+				byte[] bytes = new byte[expectLen];
+				in.reset();
+				in.get(bytes);							
+				out.write(bytes); // 其中的数据已经是丢弃头尾的数据了
+				if (in.remaining() > 0) {// 如果读取内容后还粘了包，就让父类再给俺 一次，进行下一次解析
+					return true;
+				}
+			} else {
+				//考虑截取部分有用的，找到68H,然后扔掉前面的。				
+				in.reset();
+				int temp_int=NumberUtile.byteToInt(in.get());
+				while(temp_int!=ConstVar.PREID){
+					temp_int=NumberUtile.byteToInt(in.get());
+				}
+				in.mark();
+				return false;// 接收新数据，以拼凑成完整数据
+			}
+
+		}
+		return false;// 处理成功，让父类进行接收下个包
+	}
+
+}

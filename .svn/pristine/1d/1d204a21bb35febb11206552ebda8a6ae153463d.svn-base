@@ -1,0 +1,446 @@
+package NJUPTDataServer.Mina;
+
+import java.io.InputStream;
+import java.net.URL;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+
+import NJUPTDataServer.Utile.ConstVar;
+import NJUPTDataServer.Utile.IDBOperation;
+import NJUPTDataServer.Utile.NumberUtile;
+import NJUPTDataServer.Utile.StringUtile;
+
+
+public class Device implements IDevice {
+	private String table_name = "T_WATTHOUR_METER";
+	private String field_name = "F_Watthour_Number";
+	//private String DeviceIP = "202.119.236.11";
+	private String ServerIP = "202.119.236.11";
+	private IDBOperation db = null;
+	private String id = "FFFFFFFFFFFF";// 长度为6个字节，16进制表达
+	private int XYLX = 1;// 1表示97协议，2表示07协议
+	private int TDZT = 0x00;// 通电状态 默认为断电状态
+	private int KZZT = 0x00;// 控制状态 默认为
+							// 分闸.00、01、10、11分别对应相应“分闸”、“回复分闸”，“合闸限制”、“回复合闸”的按钮
+	private String pw = "";
+
+	private double positiveWorkTotal;// 有功电量(有功总量)实时的数据
+	private double negativeWorkTotal;// 无功电量(实时数据)
+	private double oppoNegativeWork;// 倒送无功电量(实时数据)
+    private String MessageIP;
+	// private double Frozen_positiveWorkTotal = 0;// 冻结有功电量(有功总量)
+	// private double Frozen_negativeWorkTotal = 0;// 冻结无功电量\
+	// private double Frozen_oppoNegativeWork = 0;// 冻结倒送无功电量\
+	// private String Frozen_time = "";
+
+	private String clientName = "";
+	private String clientID = "";
+
+	// 注意解密-33H
+    public boolean needUpdate=false;//出现服务器配置改变的时候做的标志位 
+	public Device(String _id, IDBOperation _db,String _mip) {
+		id = _id;
+		db = _db;
+		MessageIP=_mip;
+		Ini_Schema();
+		// bill = new Billing(_db);
+	}
+
+	public String GetID() {
+		return id;
+	}
+public String GetPW(){return pw;}
+	public void Ini_Schema() {
+		// 从数据库把相应的值取出来，全部取出来，放在上面
+		// String sql2 =
+		// "select ,F_REPORT_PERIOD1,F_REPORT_PERIOD2,F_HEARTBEAT_PERIOD,F_FREEZE_TIME,F_PASSWORD,F_IP,F_PORT from "
+		// + table_name + " where " + field_name + "='" + id + "'";
+		String sql = "select ";
+		sql = sql + "F_RELAY_STATUS,"; // 0
+		sql = sql + "F_power_Status,"; // 1
+		sql = sql + "F_protocol_Type,"; // 2
+		sql = sql + "F_PASSWORD,"; // 3
+		sql = sql + "F_POSITIVE_WORK_TOTAL,";// 4
+		sql = sql + "F_CLIENT_UNIT_ID,";// 5
+		sql=sql+"F_SERVER_MODIFY,";//6
+		sql = sql + field_name; // 7
+		sql = sql + " from T_WATTHOUR_METER where " + field_name + "='" + id
+				+ "'";
+		String resultstr = db.excuteWithResult(sql);
+		if(resultstr.equals("")){System.out.println("设备ID数据库不存在,异常");return ;}
+		String[] strs = resultstr.split(",");
+		KZZT = Integer.parseInt(strs[0]);
+		TDZT = Integer.parseInt(strs[1]);
+		String protoltype = strs[2].trim();
+		if (protoltype.equals("2007"))
+			XYLX = 2;
+		pw = strs[3];
+		// 读取与电表相关的客户单位信息,用于记录历史信息
+		clientID = strs[5];
+		if (!clientID.equals("")) {
+			sql = "select ";
+			sql = sql + "F_CLIENT_UNIT_NAME"; // 0
+			sql = sql + " from T_CLIENT_UNIT where F_ID=" + clientID;
+			String resultstr3 = db.excuteWithResult(sql);
+			String[] strs3 = resultstr3.split(",");
+			if (strs3.length > 0)
+				clientName = strs3[0];
+		}
+		String ServerModify=strs[6];
+		//1表示有待从服务器上更新配置
+		if(ServerModify.equals("1")){
+			needUpdate=true;}
+		else needUpdate=false;
+	}
+
+	public void SetID(String id) {
+		this.id = id;
+	}
+
+	public void SetOnline() {
+		String sql = "update " + table_name + " set F_On_Line= 1 where "
+				+ field_name + "='" + id + "'";
+
+		db.excuteNoResult(sql);
+	}
+
+	public void SetOffline() {
+		String sql = "update " + table_name + " set F_On_Line= 0 where "
+				+ field_name + "='" + id + "'";
+
+		db.excuteNoResult(sql);
+	}
+
+	public byte[] dataParser(int functionid,int sub_function, byte[] data) {
+		int value = 0;
+		//int sub_function =NumberUtile.byteToInt(data[0]);
+		//从下位机主动上报的数据
+		if (functionid == ConstVar.F_DEVICE_2_SERVER) {
+			value = NumberUtile.bytesToBCD_DB(data, 0, 2);
+			double AXDY = value / 10.0;			
+			// 返回正确接收的反馈
+			return GetReturnBytes(functionid);
+
+		} else if (functionid == ConstVar.F_CLIENT_2_SERVER) {
+						
+			return GetReturnBytes(functionid);// 正确反馈
+		} else if (functionid == ConstVar.F_HEARTBEAT) {
+			
+			return null;
+		} else if (functionid == ConstVar.F_PIC_UPLOAD) {
+			
+			return null;
+		} else if (functionid == ConstVar.F_REGISTER) {
+			
+			return GetReturnBytes(functionid);// 正确反馈;
+		} else if (functionid == ConstVar.F_SERVER_2_CLIENT) {
+			value = NumberUtile.bytesToBCD(data, 0, 1);
+			int K1 = value;
+			value = NumberUtile.bytesToBCD(data, 1, 1);
+			int T1 = value;
+			if (K1 != KZZT) {
+				UpdateKZZT(K1, T1);
+			}
+			if (T1 != TDZT) {
+				UpdateTDZT(T1);
+			}
+			// 将心跳数据保存到心跳历史表中
+			String sql = "insert into T_WATTHO_HEARTB_HISTOR (F_WATTHOUR_NUMBER,F_POWER_STATUS,F_RELAY_STATUS,F_DATE) values(";
+			sql = sql + "'" + id + "',";
+			sql = sql + "'" + T1 + "'," ;
+			sql = sql + "'" + K1 + "',";
+			sql = sql + "to_date('" + NumberUtile.GetCurrentTime()
+					+ "','yyyy-MM-dd HH24:MI:ss'))";
+			db.excuteNoResult(sql);
+			SetOnline();
+			//System.out.println("还未测试保存心跳数据");
+			return GetReturnBytes(functionid);// 正确反馈
+		} else if (functionid == ConstVar.F_SERVER_2_DEVICE) {
+			value = data[0];
+			XYLX = value;
+			value = data[1];
+			KZZT = value;
+			Update_AfterReg();
+			return GetReturnRegisterBytes(functionid);
+			// 反馈较为复杂
+		} else if (functionid == ConstVar.F_SPTIAL_START) {
+			// 说明修改数据已经成功，需要同步更新一下数据库
+			// 数据格式为：当前密码（P1）、(FID+数据值)*n
+			String password = NumberUtile.bytesToBCDStr(data, 0, 4);
+			// 控制状态和通电状态另行处理
+			String _KZZT = "";
+			String _TDZT = "";
+			String sql = "update " + table_name + " set ";
+			int len = data.length;
+			String subStr="";
+			if (password.equalsIgnoreCase(pw)) {
+				for (int index = 4; index < len; index++) {
+					int FID = NumberUtile.byteToInt(data[index]);
+					int flen = NumberUtile.GetLenthByID(FID);
+					// String fName=NumberUtile.GetFieldNameByID(FID);
+					String valueStr = "";
+					for (int i = 1; i <=flen; i++) {
+						valueStr = valueStr
+								+ NumberUtile.byteToBCD(data[index + i]);
+					}
+					if (FID == 2)
+						_KZZT = valueStr;//控制状态不能马上修改,万一下位机每修改成预期的值怎么办
+					//else if (FID == 3)
+					//	_TDZT = valueStr;
+					else
+						subStr = subStr
+								+ NumberUtile
+										.ConvertBCDStr2Update_Str(FID, valueStr);
+					index = index + flen;
+				}
+				if(subStr.length()>0){
+					subStr = subStr.trim();
+					subStr = subStr.substring(0, subStr.length() - 1);
+				sql = sql +subStr+ " where " + field_name + "='" + id + "'";
+				//StringUtile.printout(sql);
+				db.excuteNoResult(sql);}
+
+			}
+			return null;
+		} 
+		 else {
+			return new byte[0];
+		}
+
+	}
+
+	private void Update_AfterReg() {
+		String dianbiao = "1997";
+		if (XYLX == 2) {
+			dianbiao = "2007";
+		}
+		// String kzzt
+		String sql = "update " + table_name + " set F_PROTOCOL_TYPE='"
+				+ dianbiao + "', " + "F_RELAY_STATUS=" + KZZT + " where "
+				+ field_name + "='" + id + "'";
+		db.excuteNoResult(sql);
+	}
+/*
+	private void SaveData1(double AXDY, double BXDY, double CXDY, double AXDL,
+			double BXDL, double CXDL, double ZGLYS) {
+		String sql = "update " + table_name + " set F_A_TENSION=" + AXDY + ", "
+				+ "F_B_TENSION=" + BXDY + ", " + "F_C_TENSION=" + CXDY + ", "
+				+ "F_A_CURRENT=" + AXDL + ", " + "F_B_CURRENT=" + BXDL + ", "
+				+ "F_C_CURRENT=" + CXDL + ", " + "F_TOTAL_POWER_RATIO=" + ZGLYS
+				+ " where " + field_name + "='" + id + "'";
+		db.excuteNoResult(sql);
+		//System.out.println("保存周期1数据");
+	}
+
+	private void SaveData2() {
+		String sql = "update " + table_name + " set F_POSITIVE_WORK_TOTAL="
+				+ positiveWorkTotal + ", " + "F_NEGATIVE_WORK_TOTAL="
+				+ negativeWorkTotal + ", " + "F_OPPO_NEGATIVE_WORK="
+				+ oppoNegativeWork + " where " + field_name + "='" + id + "'";
+		db.excuteNoResult(sql);
+		//System.out.println("保存周期2数据");
+	}
+*/
+	private void UpdateTDZT(int tdzt) {
+		TDZT = tdzt;
+		String sql = "update " + table_name + " set F_POWER_STATUS=" + TDZT
+				+ " where " + field_name + "='" + id + "'";
+		db.excuteNoResult(sql);
+		// 如果是通电状态，一定要把继电器设为“可以分闸”状态
+		if (TDZT == 0) {
+			sql = "update " + table_name + " set F_RELAY_STATUS= 0 where "
+					+ field_name + "='" + id + "'";
+			db.excuteNoResult(sql);
+		}
+	}
+
+	private void UpdateKZZT(int kzzt, int tdzt) {
+		TDZT = tdzt;
+		KZZT=kzzt;
+		// 如果是通电状态，继电器只能是初态“00”
+		if (tdzt == 0x00) {
+			KZZT = kzzt;
+			String sql = "update " + table_name
+					+ " set F_RELAY_STATUS=0,F_POWER_STATUS=0 where "
+					+ field_name + "='" + id + "'";
+			db.excuteNoResult(sql);
+		} else {
+			// int off = 0x55;	
+			String sql = "update " + table_name + " set F_RELAY_STATUS=" + KZZT
+					+ ",F_POWER_STATUS=55 where " + field_name + "='" + id
+					+ "'";
+			db.excuteNoResult(sql);
+		}
+
+	}
+
+	public byte[] GetReturnBytes(int functionid) {
+		byte[] result = null;
+		try {
+			String returnStr = Integer.toHexString(ConstVar.PREID).toUpperCase() + id
+					+ Integer.toHexString(ConstVar.AFTERID).toUpperCase();
+			returnStr = returnStr + "01" + Integer.toHexString(functionid).toUpperCase()
+					+ "00";
+
+			returnStr = returnStr +  Integer.toHexString(ConstVar.TAILE).toUpperCase();
+			result = NumberUtile.hexStringToByte(returnStr);
+		} catch (Exception e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		return result;
+	}
+
+	public byte[] GetReturnRegisterBytes(int functionid) {
+		byte[] result = null;
+		try {
+			String returnStr = Integer.toHexString(ConstVar.PREID).toUpperCase() + id
+					+ Integer.toHexString(ConstVar.AFTERID).toUpperCase();
+			// K1、S1-6、P1、F1、F2
+			String sql = "select F_RELAY_STATUS,F_REPORT_BASE_TIME,F_REPORT_PERIOD1,F_REPORT_PERIOD2,F_HEARTBEAT_PERIOD,F_FREEZE_TIME,F_PASSWORD,F_IP,F_PORT,F_APN from "
+					+ table_name + " where " + field_name + "='" + id + "'";
+			String resultstr = db.excuteWithResult(sql);
+			if(resultstr.equals("")) {System.out.println("设备ID数据库不存在,不返回数据到下位机!");return null;}
+			// String content = NumberUtile.ConfigAll_DB2Protol(resultstr);
+			String[] strs = resultstr.split(",");
+			String K1 = "0" + strs[0];
+			// String S1 = NumberUtile.Int2TimeStr(Integer.parseInt(strs[1]),
+			// "hhmmss");
+			String S1 = strs[1];
+			// String S2 = NumberUtile.Int2TimeStr(Integer.parseInt(strs[2]),
+			// "hhmm");
+			String S2 = strs[2];
+			// String S3 = NumberUtile
+			// .Int2TimeStr(Integer.parseInt(strs[3]), "mm");
+			String S3 = strs[3];
+			// String S4 = NumberUtile
+			// .Int2TimeStr(Integer.parseInt(strs[4]), "mm");
+			String S4 = strs[4];
+			String S5 = NumberUtile.PackPre0(strs[5], 8);
+			Date currentTime = new Date();
+			SimpleDateFormat formatter = new SimpleDateFormat("yyMMddHHmmss");
+			String S6 = formatter.format(currentTime);
+			// String S6=NumberUtile.GetCurrentTime();
+			String pw = NumberUtile.PackPre0(strs[6], 8);// PW
+			String ipStr = strs[7];// IP
+			ServerIP=ipStr;
+			String[] ips = ipStr.split("\\.");
+			String ip_hex = "";
+			ip_hex = ip_hex
+					+ NumberUtile.PackPre0(ips[0], 3);//.intToHexStr(Integer.parseInt(ips[0]), 2);
+			ip_hex = ip_hex
+					+ NumberUtile.PackPre0(ips[1], 3);
+			ip_hex = ip_hex
+					+ NumberUtile.PackPre0(ips[2], 3);
+			ip_hex = ip_hex
+					+ NumberUtile.PackPre0(ips[3], 3);
+			// PORT
+			String port = NumberUtile.PackPre0(strs[8], 6);//.intToHexStr(Integer.parseInt(strs[8]), 4);
+			//VPN			
+			String apn=NumberUtile.StrToASCII_hexStr(strs[9].trim(),16);
+			String content = K1 + S1 + S2 + S3 + S4 + S5 + S6 + pw + ip_hex
+					+ port+apn;
+
+			returnStr = returnStr + "01" + Integer.toHexString(functionid).toUpperCase()
+					+ NumberUtile.intToHexStr(content.length() / 2, 2);// 长度应该是27+16
+			returnStr = returnStr + content;
+
+			returnStr = returnStr +  Integer.toHexString(ConstVar.TAILE).toUpperCase();
+			System.out.println(id+"下位机注册返回"+returnStr);
+			result = NumberUtile.hexStringToByte(returnStr);
+		} catch (Exception e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		return result;
+	}
+
+	public byte[] GetReturnSetTimeBytes(int functionid) {
+		byte[] result = null;
+		try {
+			String returnStr = Integer.toHexString(ConstVar.PREID).toUpperCase() + id
+					+ Integer.toHexString(ConstVar.AFTERID).toUpperCase();
+			Date currentTime = new Date();
+			SimpleDateFormat formatter = new SimpleDateFormat("yyMMddHHmmss");
+			String S6 = formatter.format(currentTime);
+			String content = pw+S6;
+			returnStr = returnStr + "01" + Integer.toHexString(functionid).toUpperCase()
+					+ NumberUtile.intToHexStr(content.length() / 2, 2);// 
+			returnStr = returnStr + content;
+			
+			returnStr = returnStr + Integer.toHexString(ConstVar.TAILE).toUpperCase();
+			//System.out.println("校时返回："+returnStr);
+			result = NumberUtile.hexStringToByte(returnStr);
+			
+		} catch (Exception e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		return result;
+	}
+
+
+	// 0表示正常 1、2、3分别表示三级报警
+	private int GetAlarmLevel(double shengYuDianLiang) {
+		int result = 0;
+		if(clientID.equals("")){System.out.println("客户单位ID异常,不能查询告警水平");return 0;}
+		String sql = "select F_FIRST_LINE,F_SECOND_LINE,F_THIRD_LINE from T_CLIENT_UNIT where F_ID="
+				+ clientID;
+		String strs = db.excuteWithResult(sql);
+		String[] strArray = strs.split(",");
+		double Third = Double.parseDouble(strArray[2]);
+		double Second = Double.parseDouble(strArray[1]);
+		double First = Double.parseDouble(strArray[0]);
+		if (shengYuDianLiang <= Third) {
+			result = 3;
+		} else if (shengYuDianLiang <= Second) {
+			result = 2;
+		} else if (shengYuDianLiang <= First) {
+			result = 1;
+		} else {
+			result = 0;
+		}
+		return result;
+	}
+
+	public void SendMessage(int alarmNum) {
+		// int alarmInt=alarmLevel-1;
+		Date currentTime2 = new Date();
+		SimpleDateFormat formatter2 = new SimpleDateFormat("HH");
+		String dateString2= formatter2.format(currentTime2);
+		int hour=Integer.parseInt(dateString2);
+		if(hour<=7 || hour>=22){
+		return;
+		}
+		if(MessageIP==null){StringUtile.printout("短信服务器未配置!");return;}
+		String urlstr = "http://"
+				+ MessageIP
+				+ "/rt_gauge/message/message.action?method:autoAddMessage=xxxx&watthourMeterId="+id+"&msgType="
+				+ alarmNum;
+		InputStream is = null;
+		try {
+			URL url = new URL(urlstr);
+			is = url.openStream();
+			StringUtile.printout("调用短信函数");
+			StringUtile.printout(urlstr);
+		} catch (Exception e) {
+		} finally {
+			try {
+				if(is!=null)
+				is.close();
+			} catch (Exception e) {
+			}
+		}
+		
+	}
+    public boolean needServerUpdate(){return this.needUpdate;}
+    public void SetServerUpdate(boolean value){
+    	this.needUpdate=value;
+    }
+
+	@Override
+	public String GetTransfer() {
+		// TODO Auto-generated method stub
+		return null;
+	}
+}

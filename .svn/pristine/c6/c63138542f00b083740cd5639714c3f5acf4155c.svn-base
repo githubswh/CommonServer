@@ -1,0 +1,21 @@
+package NJUPTDataServer.Mina;
+
+import org.apache.mina.core.session.IoSession;
+import org.apache.mina.filter.codec.ProtocolEncoderAdapter;
+import org.apache.mina.filter.codec.ProtocolEncoderOutput;
+
+public class ServerEncode extends ProtocolEncoderAdapter {
+
+	public ServerEncode() {
+		// TODO Auto-generated constructor stub
+	}
+
+
+	public void encode(IoSession arg0, Object message, ProtocolEncoderOutput out)
+			throws Exception {
+        out.write(message); 
+		
+		
+	}
+
+}

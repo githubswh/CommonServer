@@ -1,0 +1,319 @@
+package NJUPTDataServer.Mina;
+
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.Hashtable;
+
+import NJUPTDataServer.Utile.ConstVar;
+import NJUPTDataServer.Utile.IDBOperation;
+import NJUPTDataServer.Utile.NumberUtile;
+
+public class Device implements IDevice {
+	//增加状态记录图片上传的索引信息
+	int datacount=0;
+	int dataindex=0;
+	byte[] pic=new byte[0];//需要动态
+	//===============
+	private String ServerIP = "202.119.236.11";
+	private IDBOperation db = null;
+	private String id = "FFFFFFFFFFFF";// 长度为6个字节，16进制表达
+	//记录配置信息，主要是地址和地址含义、及数据库字段的对应关系，每个具有唯一ID的设备都有一个配置，也许大部分相同。
+	private DeviceConfig config = null;
+
+	public Device(String _id, IDBOperation _db, String _mip) {
+		id = _id;
+		db = _db;
+		Ini_Schema();
+		config = new DeviceConfig(id);
+	}
+
+	public String GetID() {
+		return id;
+	}
+
+	public void Ini_Schema() {
+	}
+
+	public void SetID(String id) {
+		this.id = id;
+	}
+
+	public void SetOnline() {
+		String sql = "";
+
+		db.excuteNoResult(sql);
+	}
+
+	public void SetOffline() {
+		String sql = "";
+		db.excuteNoResult(sql);
+	}
+/***
+ * 
+ * @param functionid 大功能码
+ * @param sub_function 子功能码
+ * @param data 数据
+ * @param count 上传的数据如果为分段数据的话，count表示总段数(从0开始，0表示共一段)
+ * @param index 上传的数据如果为分段数据的话，index表示第几段（从0开始，0表示第一段）
+ * @return
+ */
+	public String dataParser(int functionid, int sub_function, byte[] data,
+	        int count,int index, long timestamp, String ID) {
+	    //根据数据总段数和当前索引值，进行数据存储
+	    //1.在接收图片数据时会用到。2.注册码反馈包会用到
+		datacount=count;
+		dataindex=index;
+		Adress adres = new Adress();
+		String result="";
+		// 存储解析的数据结果（地址+值）
+//		Hashtable values = new Hashtable();
+		if (functionid == ConstVar.F_DEVICE_2_SERVER) {
+			adres.Parser(sub_function, data, timestamp, ID);
+			// 根据配置映射信息将数据写到数据库
+			//Save_Data(config, values);
+			// 返回正确接收的反馈
+			result=GetReturnString(functionid,count,index,ID);
+			return result;
+
+		} else if (functionid == ConstVar.F_CLIENT_2_SERVER) {
+			result=GetReturnString(functionid,count,index,ID);
+			return result;
+		} else if (functionid == ConstVar.F_HEARTBEAT) {
+
+			return null;
+		} else if (functionid == ConstVar.F_PIC_UPLOAD) {
+
+			return null;
+		} else if (functionid == ConstVar.F_REGISTER) {
+
+			result=GetReturnString(functionid,count,index,ID);
+			return result;// 正确反馈;
+		} else if (functionid == ConstVar.F_SERVER_2_CLIENT) {
+			result=GetReturnString(functionid,count,index,ID);
+			return result;// 正确反馈
+		} else if (functionid == ConstVar.F_SERVER_2_DEVICE) {
+			return GetReturnRegisterBytes(functionid);
+			// 反馈较为复杂
+		} else if (functionid == ConstVar.F_SPTIAL_START) {
+
+			return null;
+		} else {
+			return null;
+		}
+
+	}
+
+	
+	public String GetReturnString(int functionid,int lowcount,int highindex,String ID) {
+        String result = null;
+        try {
+            //1-16修改-按照通信协议返回
+            if(functionid == ConstVar.F_DEVICE_2_SERVER){
+                //主功能码为1，反馈包数据区为空
+                result = "";
+                return result;
+            }
+            else if(functionid == ConstVar.F_SERVER_2_DEVICE) result = "";
+            else if(functionid == ConstVar.F_HEARTBEAT) result = "";
+            else if(functionid == ConstVar.F_REGISTER) {
+             // 1-24修改-04功能码（注册功能码），返回0区和4区的数据
+                // 根据协议0区数据1次返回，4区数据分5次返回
+                if (lowcount == 5 & highindex == 0) {
+                    result = result + "0F" + "FF";
+                    String sql = "select config_address from sys_sensor "
+                            + "where device_id in (select id from sys_device "
+                            + "where number='" + ID + "') and order by config_address ASC";
+                    result = result + funcZero(sql);
+                } else if (lowcount == 5 & highindex == 1) {
+                    result = result + "10" + "FF";
+                    // 返回：子功能码+是否含数据值序列+起始地址+寄存器数量+数据值序列
+                    // sql语句需要修改，地址改成int类型
+                    String s1 = "select address,value from sys_register_four "
+                            + "where address<="+0x021F+" and address>="+0x0100+" "
+                            + "and '" + ID + "'=device_number order by address ASC";
+                    result = result + getByteValue(s1);
+                } else if (lowcount == 5 & highindex == 2) {
+                    result = result + "10" + "FF";
+                    String s2 = "select address,value from sys_register_four "
+                            + "where address<="+0x033F+" and address>="+0x0220+" "
+                            + "and '" + ID + "'=device_number order by address ASC";
+                    result = result + getByteValue(s2);
+                } else if (lowcount == 5 & highindex == 3) {
+                    result = result + "10" + "FF";
+                    String s3 = "select address,value from sys_register_four "
+                            + "where address<="+0x06FF+" and address>="+0x0580+" "
+                            + "and '" + ID + "'=device_number order by address ASC";
+                    result = result + getByteValue(s3);
+                } else if (lowcount == 5 & highindex == 4) {
+                    result = result + "10" + "FF";
+                    String s4 = "select address,value from sys_register_four "
+                            + "where address<="+0x087F+" and address>="+0x0700+" "
+                            + "and '" + ID + "'=device_number";
+                    result = result + getByteValue(s4);
+                } else if (lowcount == 5 & highindex == 5) {
+                    result = result + "10" + "FF";
+                    String s5 = "select address,value from sys_register_four "
+                            + "where address<="+0x090F+" and address>="+0x0900+" "
+                            + "and '" + ID + "'=device_number";
+                    result = result + getByteValue(s5);
+                }
+            }
+            else if(functionid == ConstVar.F_PIC_UPLOAD) result = "";
+            else if(functionid == ConstVar.F_CLIENT_2_SERVER) result = "";
+            else if(functionid == ConstVar.F_SERVER_2_CLIENT) result = "";
+            else if(functionid == ConstVar.F_SPTIAL_START) result = "";
+        } catch (Exception e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
+        return result;
+    }
+
+/**
+ * 
+ * @param functionid
+ * @return 因为注册的数据返回，数据属于不同的区域，所以返回两个数据段，返回会话将用两次发送给下位机
+ */
+	public String GetReturnRegisterBytes(int functionid) {
+		String result = null;
+		try {
+
+		} catch (Exception e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		return result;
+	}
+
+	public byte[] GetReturnSetTimeBytes(int functionid) {
+		byte[] result = null;
+		try {
+
+		} catch (Exception e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		return result;
+	}
+
+	public boolean needServerUpdate() {
+		return false;
+	}
+
+	public void SetServerUpdate(boolean value) {
+		
+	}
+
+	@Override
+	public String GetTransfer() {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public String GetPW() {
+		// TODO Auto-generated method stub
+		return null;
+	}
+	
+	public String funcZero(String sql) {
+        String result0 = "";
+        ResultSet rs = null;
+        int part_address = -1;
+        int part_len = 0;
+        // String part_value = "";
+        rs = db.excuteWithSetResult(sql);
+        // int mm = 0;
+        try {
+            boolean flag = true;
+            int address = -1;
+            while (flag) {
+                if(rs.next()) {flag = true;}
+                else {flag = false;}
+                if(flag==true) { address = rs.getInt(1);}
+                if (part_len == 0) {
+                    part_address = address;
+                    part_len = 1;
+                    // part_len++;
+                    // part_value = "1";
+                } else if (address == part_address + part_len) {
+                    part_len++;
+                } else {
+                    // 处理数据
+                    result0 = result0 + NumberUtile.intToHexStr(part_address, 4)
+                            + NumberUtile.intToHexStr(part_len, 4);
+                    // result0 = result0 + part_address + "" + part_len;
+                    String value = "";
+                    String Hex_value = "";
+                    int temp = part_len % 8;
+                    for (int ss = 0; ss < (8 - temp); ss++) {
+                        value = value + "0";
+                    }
+                    for (int ss = 0; ss < part_len; ss++) {
+                        value = value + "1";
+                    }
+                    if (temp == 0) {
+                        Hex_value = Hex_value
+                                + NumberUtile.BinaryStrToHexString(value, temp);
+                    } else {
+                        Hex_value = Hex_value
+                                + NumberUtile.BinaryStrToHexString(value,
+                                        temp + 1);
+                    }
+                    result0 = result0 + Hex_value;
+
+                    part_address = address;
+                    part_len = 1;
+
+                    // part_value = "1";
+                }
+            }
+        } catch (SQLException e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
+        return result0;
+    }
+	
+	public String getByteValue(String sql) {
+        String result4 = "";
+        String Str_value = "";
+        String value = null;
+        ResultSet rs = null;
+        int part_address = 0;
+        int part_len = 0;
+        int part_value = 0;
+        rs = db.excuteWithSetResult(sql);
+        try {
+            boolean flag = true;
+            int address = -1;
+            while (flag) {
+                if(rs.next()) {flag = true;}
+                else {flag = false;}
+                if(flag==true) { 
+                    address = rs.getInt(1);
+                    part_value = rs.getInt(2);
+                    value = NumberUtile.intToHexStr(part_value, 4);
+                }
+                if (part_len == 0) {
+                    part_address = address;
+                    part_len = 1;
+                    Str_value = Str_value + value;
+                } else if (address == part_address + 1) {
+                    part_len++;
+                    Str_value = Str_value + value;
+                } else {
+                    result4 = result4 + NumberUtile.intToHexStr(part_address, 4)
+                            + NumberUtile.intToHexStr(part_len, 4) + Str_value;
+                    part_address = address;
+                    part_len = 1;
+                }
+            }
+        } catch (SQLException e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
+        return result4;
+    }
+
+}

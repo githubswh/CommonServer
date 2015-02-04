@@ -1,0 +1,188 @@
+package NJUPTDataServer.Mina;
+
+import java.util.Hashtable;
+
+import NJUPTDataServer.Utile.ConstVar;
+import NJUPTDataServer.Utile.IDBOperation;
+import NJUPTDataServer.Utile.NumberUtile;
+
+public class Device implements IDevice {
+	private String ServerIP = "202.119.236.11";
+	private IDBOperation db = null;
+	private String id = "FFFFFFFFFFFF";// 长度为6个字节，16进制表达
+	//记录配置信息，主要是地址和地址含义、及数据库字段的对应关系，每个具有唯一ID的设备都有一个配置，也许大部分相同。
+	private DeviceConfig config = null;
+
+	public Device(String _id, IDBOperation _db, String _mip) {
+		id = _id;
+		db = _db;
+		Ini_Schema();
+		config = new DeviceConfig(id);
+	}
+
+	public String GetID() {
+		return id;
+	}
+
+	public void Ini_Schema() {
+	}
+
+	public void SetID(String id) {
+		this.id = id;
+	}
+
+	public void SetOnline() {
+		String sql = "";
+
+		db.excuteNoResult(sql);
+	}
+
+	public void SetOffline() {
+		String sql = "";
+		db.excuteNoResult(sql);
+	}
+
+	public String dataParser(int functionid, int sub_function, byte[] data) {
+		Adress adres = new Adress();
+		
+		// 存储解析的数据结果（地址+值）
+		Hashtable values = new Hashtable();
+		if (functionid == ConstVar.F_DEVICE_2_SERVER) {
+			adres.Parser(sub_function, data, values);
+			// 根据配置映射信息将数据写到数据库
+			Save_Data(config, values);
+			// 返回正确接收的反馈
+			return GetReturnString(functionid);
+
+		} else if (functionid == ConstVar.F_CLIENT_2_SERVER) {
+
+			return GetReturnString(functionid);// 正确反馈
+		} else if (functionid == ConstVar.F_HEARTBEAT) {
+
+			return null;
+		} else if (functionid == ConstVar.F_PIC_UPLOAD) {
+
+			return null;
+		} else if (functionid == ConstVar.F_REGISTER) {
+
+			return GetReturnString(functionid);// 正确反馈;
+		} else if (functionid == ConstVar.F_SERVER_2_CLIENT) {
+			return GetReturnString(functionid);// 正确反馈
+		} else if (functionid == ConstVar.F_SERVER_2_DEVICE) {
+			return GetReturnRegisterBytes(functionid);
+			// 反馈较为复杂
+		} else if (functionid == ConstVar.F_SPTIAL_START) {
+
+			return null;
+		} else {
+			return null;
+		}
+
+	}
+
+	/**
+	 * 按照配置文件，将values哈希表中的数据局，存储到数据库
+	 * 
+	 * @param config
+	 *            配置文件，记录了地址和表名、字段名的映射关系
+	 * @param values
+	 *            哈希表，记录了地址及取值的情况
+	 * @return
+	 */
+	private boolean Save_Data(DeviceConfig config, Hashtable values) {
+		return true;
+	}
+
+	private void Update_AfterReg() {
+
+		// String kzzt
+		String sql = "";
+		db.excuteNoResult(sql);
+	}
+	
+	public String GetReturnString(int functionid) {
+        String result = null;
+        try {
+            //1-16修改-按照通信协议返回
+            if(functionid == ConstVar.F_DEVICE_2_SERVER){
+                //主功能码为1，反馈包数据区为空
+                result = "";
+                return result;
+            }
+            else if(functionid == ConstVar.F_SERVER_2_DEVICE) result = "";
+            else if(functionid == ConstVar.F_HEARTBEAT) result = "";
+            else if(functionid == ConstVar.F_REGISTER) result = "";
+            else if(functionid == ConstVar.F_PIC_UPLOAD) result = "";
+            else if(functionid == ConstVar.F_CLIENT_2_SERVER) result = "";
+            else if(functionid == ConstVar.F_SERVER_2_CLIENT) result = "";
+            else if(functionid == ConstVar.F_SPTIAL_START) result = "";
+            
+           /*
+            String returnStr = Integer.toHexString(ConstVar.PREID)
+                    .toUpperCase()
+                    + id
+                    + Integer.toHexString(ConstVar.AFTERID).toUpperCase();
+            returnStr = returnStr + "01"
+                    +Integer.toHexString((functionid & 0x000000FF) | 0xFFFFFF00).substring(6) 
+                    + "00";
+            //1-13修改-功能码不能正常显示
+//                  + Integer.toHexString(functionid).toUpperCase() + "00";
+
+            returnStr = returnStr
+                    + Integer.toHexString(ConstVar.TAILE).toUpperCase();
+            //1-13修改-输出String型的returnStr
+            System.out.println(returnStr);
+            result = NumberUtile.hexStringToByte(returnStr);
+        */
+            
+        } catch (Exception e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
+        return result;
+    }
+
+	
+
+	public String GetReturnRegisterBytes(int functionid) {
+		String result = null;
+		try {
+
+		} catch (Exception e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		return result;
+	}
+
+	public byte[] GetReturnSetTimeBytes(int functionid) {
+		byte[] result = null;
+		try {
+
+		} catch (Exception e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		return result;
+	}
+
+	public boolean needServerUpdate() {
+		return false;
+	}
+
+	public void SetServerUpdate(boolean value) {
+		
+	}
+
+	@Override
+	public String GetTransfer() {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public String GetPW() {
+		// TODO Auto-generated method stub
+		return null;
+	}
+}

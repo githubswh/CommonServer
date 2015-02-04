@@ -1,0 +1,305 @@
+package NJUPTDataServer.Mina;
+
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.text.SimpleDateFormat;
+import java.util.Collections;
+import java.util.Date;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.Properties;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+
+import NJUPTDataServer.Utile.ConstVar;
+import NJUPTDataServer.Utile.IDBOperation;
+import NJUPTDataServer.Utile.NumberUtile;
+import NJUPTDataServer.Utile.StringUtile;
+
+import org.apache.mina.core.buffer.IoBuffer;
+import org.apache.mina.core.future.WriteFuture;
+import org.apache.mina.core.service.IoHandler;
+import org.apache.mina.core.session.IdleStatus;
+import org.apache.mina.core.session.IoSession;
+
+public class ServerMessageHandler implements IoHandler {
+	private IoBuffer backbuffer = IoBuffer.allocate(100);
+	private int connectioncount = 0;
+	// private Set<IoSession> AllConnectSessions = Collections
+	// .synchronizedSet(new HashSet<IoSession>());
+	// private Set<IoSession> AllDeviceSessions = new HashSet<IoSession>();
+	private ConcurrentHashMap<Long, IoSession> AllDeviceSessions = new ConcurrentHashMap();
+	private ConcurrentHashMap<Long, IoSession> AllSpatialSessions = new ConcurrentHashMap();
+	private ConcurrentHashMap<Long, IoSession> AllClientSessions = new ConcurrentHashMap();
+
+	private IDBOperation db = null;
+	private String messageip = null;
+
+	public ServerMessageHandler() {
+		backbuffer.setAutoShrink(true);
+
+	}
+
+	public void SetMessageIP(String _ipaddress) {
+		messageip = _ipaddress;
+	}
+
+	public void SetDB(IDBOperation _db) {
+		db = _db;
+	}
+
+	public void CloseConnect() {
+		String sql = "update T_WATTHOUR_METER set F_On_Line= 0  ";
+		db.excuteNoResult(sql);
+		Iterator<Long> it = AllDeviceSessions.keySet().iterator();
+		while (it.hasNext())// for (IoSession ioSession : AllDeviceSessions)
+		{
+			Long key = it.next();
+			IoSession ioSession = AllDeviceSessions.get(key);
+			if (ioSession == null)
+				continue;
+			IDevice device = (IDevice) (ioSession
+					.getAttribute(ConstVar.TAG_DEVICE));
+			if (device != null) {
+				// StringUtile.printout("准备关闭连接："+device.GetID());
+				// device.SetOffline();
+				StringUtile.printout("设备离线:" + device.GetID());
+				// ioSession.close(false);
+				connectioncount--;
+				AllDeviceSessions.remove(ioSession.getId());
+				device = null;
+				// StringUtile.printout("设备连接数:" + connectioncount);
+			}
+		}
+
+	}
+
+	public void exceptionCaught(IoSession session, Throwable arg1)
+			throws Exception {
+	}
+
+	public void messageReceived(IoSession session, Object message)
+			throws Exception {
+		byte[] data = (byte[]) message;
+		// 输出本条信息用于日志显示
+		int count = data.length;
+		String show = "";
+		for (int i = 0; i < count; i++) {
+			show = show + NumberUtile.bytes2HexString(data[i]);
+		}
+		// 获取数据区域长度
+		String data_len_hex = NumberUtile.bytes2HexString(data[1])
+				+ NumberUtile.bytes2HexString(data[2]);
+		int data_len = Integer.parseInt(data_len_hex, 16);
+		// 获取功能码
+		int function = NumberUtile.byteToInt(data[3]);
+		// int
+		// function=Integer.parseInt(NumberUtile.bytes2HexString(data[3]),16);
+		// 获取标志位
+		// int from = Integer.parseInt(NumberUtile.bytes2HexString(data[4]), 16)
+		// ;
+		int from = NumberUtile.byteToInt(data[4]);
+		// 获取设备ID
+		String ID = "";
+		for (int i = 5; i < 11; i++) {
+			byte c = data[i];
+			ID = ID + NumberUtile.bytes2HexString(c);// 高位在前低位在后
+		}
+		// 获取时间戳
+		String time = "";
+		for (int i = 11; i < 15; i++) {
+			byte c1 = data[i];
+			time = time + NumberUtile.bytes2HexString(c1);// 高位在前低位在后
+		}
+		//在有些时候该步骤取得的数值为子功能码，有些时候不是。
+		int sub_function = NumberUtile.byteToInt(data[16]);
+		byte[] subdata = new byte[data_len - 1];
+		System.arraycopy(data, 17, subdata, 0, subdata.length);// 跳过0x68和子功能码
+		if (from == ConstVar.COME_FROM_DTU) {
+			Device device = (Device) session.getAttribute(ConstVar.TAG_DEVICE);
+			if (device == null) {
+				IoSession old = GetDeviceSession(ID);
+				if (old != null) {
+					old.close(true);
+					StringUtile.printout(ID + "设备已经注册,删除旧的注册!");
+				}
+				device = new Device(ID, db, messageip);
+				device.SetOnline();
+				StringUtile.printout("设备在线messageReceived:" + ID);
+				session.setAttribute(ConstVar.TAG_DEVICE, device);
+				AllDeviceSessions.put(session.getId(), session);// .add(session.getId()+"",session);
+				connectioncount++;
+				// StringUtile.printout("设备连接数:" + connectioncount);
+			}
+			byte[] returnByte = device.dataParser(function, sub_function,
+					subdata);
+			if (returnByte != null) {
+				SendReturnMessageDirect(session, returnByte);
+			} else {
+				// StringUtile.printout("not need respond");
+			}
+		} else if (from == ConstVar.COME_FROM_OTHER) {
+			
+		} else if (from == ConstVar.COME_FROM_SPATIAL) {
+
+		} else {
+			StringUtile.printout("请求来源不明确!");
+		}
+
+	}
+
+	public void sessionClosed(IoSession session) throws Exception {
+		IDevice device = (IDevice) (session.getAttribute(ConstVar.TAG_DEVICE));
+		if (device != null) {
+			device.SetOffline();
+			StringUtile.printout("设备离线sessionClosed:" + device.GetID());
+			AllDeviceSessions.remove(session.getId());//
+			connectioncount--;
+		}
+		// StringUtile.printout("连接关闭:" + session.getId());
+	}
+
+	public void sessionCreated(IoSession session) throws Exception {
+		IDevice device = (IDevice) (session.getAttribute(ConstVar.TAG_DEVICE));
+		if (device != null) {
+			device.SetOnline();
+			StringUtile.printout("设备在线sessionCreated:" + device.GetID());
+		}
+
+	}
+
+	public void sessionIdle(IoSession session, IdleStatus arg1)
+			throws Exception {
+		Device device = (Device) session.getAttribute(ConstVar.TAG_DEVICE);
+		if (device != null) {
+			device.SetOffline();
+			StringUtile.printout("设备离线sessionIdle:" + device.GetID());
+		}
+		session.close(false);
+		// session.close();
+	}
+
+	public void sessionOpened(IoSession session) throws Exception {
+		IDevice device = (IDevice) (session.getAttribute(ConstVar.TAG_DEVICE));
+		if (device != null) {
+			device.SetOnline();
+			StringUtile.printout("设备在线sessionOpened:" + device.GetID());
+			// StringUtile.printout("设备连接数:" + connectioncount);
+		}
+	}
+
+	private void SendReturnMessageDirect(IoSession session, byte[] data) {
+		backbuffer.clear();
+		backbuffer.put(data);
+		backbuffer.shrink();
+		backbuffer.flip();
+		WriteFuture future = session.write(backbuffer);
+		// future.awaitUninterruptibly();
+		future.join();
+		if (future.isWritten()) {
+			// The message has been written successfully.
+			return;
+		} else {
+			// The messsage couldn't be written out completely for some reason.
+			// (e.g. Connection is closed)
+		}
+	}
+
+	public void messageSent(IoSession arg0, Object arg1) throws Exception {
+
+	}
+
+	private String byte2bits(byte b) {
+		int z = b;
+		z |= 256;
+		String str = Integer.toBinaryString(z);
+		int len = str.length();
+		return str.substring(len - 8, len);
+	}
+
+	private IoSession GetDeviceSession(String id) {
+		Iterator<Long> it = AllDeviceSessions.keySet().iterator();
+		while (it.hasNext())// for (IoSession ioSession : AllDeviceSessions)
+		{
+			Long key = it.next();
+			IoSession oldsession = AllDeviceSessions.get(key);
+
+			IDevice device = (IDevice) (oldsession
+					.getAttribute(ConstVar.TAG_DEVICE));
+			// System.out.println();
+			if (device != null) {
+				// String s = device.GetID();
+				if (device.GetID().equalsIgnoreCase(id)) {
+					return oldsession;
+				}
+			}
+
+		}
+
+		// }
+		return null;
+	}
+
+	// 服务端的批量修改命令
+	private void ModifyAllSession(byte[] subData) {
+		Iterator<Long> it = AllDeviceSessions.keySet().iterator();
+		while (it.hasNext())// for (IoSession ioSession : AllDeviceSessions)
+		{
+			Long key = it.next();
+			IoSession oldsession = AllDeviceSessions.get(key);
+			IDevice device = (IDevice) (oldsession
+					.getAttribute(ConstVar.TAG_DEVICE));
+			if (device != null) {
+				try {
+
+				} catch (Exception e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+			}
+
+		}
+		// for (IoSession oldsession : AllDeviceSessions) {}
+	}
+
+	// 服务端的批量修改命令,修改余下的电表
+	private void ModifyRestSession(byte[] subData) {
+		Iterator<Long> it = AllDeviceSessions.keySet().iterator();
+		while (it.hasNext())// for (IoSession ioSession : AllDeviceSessions)
+		{
+			Long key = it.next();
+			IoSession oldsession = AllDeviceSessions.get(key);
+			IDevice device = (IDevice) (oldsession
+					.getAttribute(ConstVar.TAG_DEVICE));
+			if (device != null) {
+				try {
+				} catch (Exception e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+			}
+
+		}
+		// for (IoSession oldsession : AllDeviceSessions) {}
+	}
+
+	private void messageout(String value, int functionid) {
+		String function = "未知类型";
+		/*
+		 * if (functionid == ConstVar.UPLOAD_TIME1_DATA){function="周期1";} else
+		 * if (functionid == ConstVar.UPLOAD_TIME2_DATA){function="周期2";} else
+		 * if (functionid == ConstVar.READ_CURRENT){function="读取当前";} else if
+		 * (functionid == ConstVar.READ_FROZEN){function="读取冻结";} else if
+		 * (functionid == ConstVar.UPLOAD_FROZEN){function="上报冻结";} else if
+		 * (functionid == ConstVar.BEAT_DATA){function="心跳数据";} else if
+		 * (functionid == ConstVar.REAGISTER){function="电表注册";} else if
+		 * (functionid == ConstVar.MODIFY){function="单独修改";} else if(functionid
+		 * == ConstVar.MODIFY_BAT){function="批量修改";} else if (functionid ==
+		 * ConstVar.SETTIME){function="电表校时";} else if (functionid ==
+		 * ConstVar.DEVICE_STATUS){function="状态上报";} else{}
+		 * StringUtile.printout(function+":"+value);
+		 */
+	}
+}

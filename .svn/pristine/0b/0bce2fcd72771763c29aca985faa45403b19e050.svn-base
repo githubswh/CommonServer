@@ -1,0 +1,102 @@
+package NJUPTDataServer.Utile;
+
+public interface ConstVar {
+    
+    
+    public static int PREID=0x68;  //68H
+    public static int AFTERID=0x68;//68H
+    public static int TAILE=0x16;   //16H
+    public static String TAG_DEVICE="DEVICE";
+    public static int F_DEVICE_2_SERVER=0x01;
+    public static int F_SERVER_2_DEVICE=0x02;
+    public static int F_HEARTBEAT=0x03;
+    public static int F_REGISTER=0x04;
+    public static int F_PIC_UPLOAD=0x05;
+    public static int F_PIC_QUERY_FROM_DEVICE=0x06;
+    public static int F_CLIENT_2_SERVER=0x07;
+    public static int F_SERVER_2_CLIENT=0x08;
+    public static int F_PIC_QUERY_FROM_SERVER=0x09;
+    public static int F_SPTIAL_START=0x0A;
+   
+    public static int F_SUB_READ_RELAY_STATE_AND_CONFIG=0x01;
+    public static int F_SUB_READ_CONTROL_STATE=0x02;
+    public static int F_SUB_READ_TEMPERATURE_DISPLACEMENT=0x03;
+    public static int F_SUB_READ_TEMPERATURE_DOMAIN_IP=0x04;
+    public static int F_SUB_SET_RELAY_STATE_AND_CONFIG=0x05;
+    public static int F_SUB_SET_TEMPERATURE_DOMAIN_IP=0x06;
+ 
+    public static int COME_FROM_DTU=0x01; 
+    public static int COME_FROM_OTHER=0x02;
+    public static int COME_FROM_SPATIAL=0x03;
+    
+    public static int JCQ_0_QU=0x00; 
+    public static int JCQ_1_QU=0x01; 
+    public static int JCQ_3_QU=0x03; 
+    public static int JCQ_4_QU=0x04; 
+    public static int JCQ_UNKNOWN=-1; 
+    
+    /*
+    public static int UPLOAD_TIME1_DATA=0x30;
+    public static int UPLOAD_TIME1_DATA_R=0x31;
+    public static int UPLOAD_TIME2_DATA=0x40;
+    public static int UPLOAD_TIME2_DATA_R=0x41;
+    public static int BEAT_DATA=0x50;
+    public static int BEAT_DATA_R=0x51; 
+    public static int REAGISTER=0x60;
+    public static int REAGISTER_R=0x61; 
+    public static int MODIFY=0x80;
+    public static int MODIFY_R=0x81;
+    public static int SETTIME=0x70;
+    public static int SETTIME_R=0x71;  
+    public static int UPLOAD_FROZEN=0x90;
+    public static int UPLOAD_FROZEN_R=0x91;
+    public static int DEVICE_STATUS=0xA0;
+    public static int DEVICE_STATUS_R=0xA1;
+    public static int MODIFY_BAT=0xB0;
+    public static int MODIFY_BAT_R=0xB1;
+    public static int MODIFY_BAT_REST=0xB3;
+    public static int MODIFY_BAT_REST_R=0xB4;
+
+    public static int F_PROTOCOL_TYPE_ID=0x01;
+    public static int F_RELAY_STATUS_ID=0x02;
+    public static int F_POWER_STATUS_ID=0x03;
+    public static int F_REPORT_BASE_TIME_ID=0x04;
+    public static int F_REPORT_PERIOD1_ID=0x05;
+    public static int F_REPORT_PERIOD2_ID=0x06;
+    public static int F_HEARTBEAT_PERIOD_ID=0x07;
+    public static int F_FREEZE_TIME_ID=0x08;
+    public static int F_PROOFREAD_ID=0x09;
+    public static int F_PASSWORD_ID=0x0A;
+    public static int F_IP_ID=0x0B;
+    public static int F_PORT_ID=0x0C;
+    public static int F_APN_ID=0x0D;
+    
+    public static int F_PROTOCOL_TYPE_LEN=1;
+    public static int F_RELAY_STATUS_LEN=1;
+    public static int F_POWER_STATUS_LEN=1;
+    public static int F_REPORT_BASE_TIME_LEN=3;
+    public static int F_REPORT_PERIOD1_LEN=2;
+    public static int F_REPORT_PERIOD2_LEN=1;
+    public static int F_HEARTBEAT_PERIOD_LEN=1;
+    public static int F_FREEZE_TIME_LEN=4;
+    public static int F_PROOFREAD_LEN=6;
+    public static int F_PASSWORD_LEN=4;
+    public static int F_IP_LEN=6;
+    public static int F_PORT_LEN=3;
+    
+    public static String F_PROTOCOL_TYPE_SID="01";
+    public static String F_RELAY_STATUS_SID="02";
+    public static String F_POWER_STATUS_SID="03";
+    public static String F_REPORT_BASE_TIME_SID="04";
+    public static String F_REPORT_PERIOD1_SID="05";
+    public static String F_REPORT_PERIOD2_SID="06";
+    public static String F_HEARTBEAT_PERIOD_SID="07";
+    public static String F_FREEZE_TIME_SID="08";
+    public static String F_PROOFREAD_SID="09";
+    public static String F_PASSWORD_SID="0A";
+    public static String F_IP_SID="0B";
+    public static String F_PORT_SID="0C";
+    public static String F_APN_SID="0D";
+    */
+
+}
